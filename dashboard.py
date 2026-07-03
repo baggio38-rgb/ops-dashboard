@@ -5839,15 +5839,28 @@ def _looks_month_aggregated(df) -> bool:
 def _replace_by_date_range(client, new_df, table, source_file):
     """日报类（平台/财务/游戏/场馆/分析/推广/代理/实时注单）：按日期替换。
     去掉「现有表里日期在新档日期集合内」的旧行→写新行，其它日期一行不动。
-    重传同一天/同月 = 覆盖那些日期，永不重复。返回 (date_range_str, removed, written, total)。"""
+    重传同一天/同月 = 覆盖那些日期，永不重复。
+
+    第一次导入时 BigQuery 表可能还不存在。
+    原本这里会先 SELECT 现有表，导致 404 Not found。
+    现在改成：表不存在时 existing = 空 DataFrame，再由 load_table_from_dataframe 自动建表。
+    返回 (date_range_str, removed, written, total)。
+    """
     dc = _date_col_of(new_df)
     if dc is None:
         # 没日期栏 → 退回按档名追加（理论上日报类都有日期，不该走到这）
         n = _append_standard_report(client, new_df, table, source_file)
         return '(无日期栏)', 0, n, None
+
     new_dates = _date_keys(new_df[dc])
     new_months = {d[:7] for d in new_dates}
-    existing = client.query(f"SELECT * FROM `{BQ_PREFIX}.{table}`").result().to_dataframe()
+
+    try:
+        existing = client.query(f"SELECT * FROM `{BQ_PREFIX}.{table}`").result().to_dataframe()
+    except Exception:
+        # 第一次导入时表不存在，直接从空表开始。
+        existing = pd.DataFrame()
+
     if dc in existing.columns and new_dates:
         ex_key = existing[dc].astype(str).str[:10]
         # 覆盖同一天的旧行；并顺手清掉「同月的整月汇总行」(如旧的 2026-05)，
@@ -5856,18 +5869,26 @@ def _replace_by_date_range(client, new_df, table, source_file):
         old_mask = ex_key.isin(new_dates) | stale_month_agg
     else:
         old_mask = pd.Series(False, index=existing.index)
+
     removed = int(old_mask.sum())
     keep = existing[~old_mask].copy()
+
     # 防掉数据：保留的行数必须 = 现有 - 删除
     if len(keep) != len(existing) - removed:
         raise RuntimeError('安全中止：行数对不上，拒绝写入')
+
     nd = new_df.copy()
     nd['_imported_at'] = pd.Timestamp.now()
     nd['_source_file'] = source_file
+
     combined = pd.concat([keep, nd], ignore_index=True)
+
     cfg = bigquery.LoadJobConfig(
-        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE, autodetect=True)
+        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+        autodetect=True,
+    )
     client.load_table_from_dataframe(combined, f"{BQ_PREFIX}.{table}", job_config=cfg).result()
+
     rng = (f"{min(new_dates)} ~ {max(new_dates)}" if len(new_dates) > 1
            else (next(iter(new_dates)) if new_dates else '?'))
     return rng, removed, len(nd), len(combined)
