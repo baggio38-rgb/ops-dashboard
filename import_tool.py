@@ -24,7 +24,7 @@ from typing import Optional, Tuple
 import pandas as pd
 from google.cloud import bigquery
 
-PROJECT_ID = 'dashboard-492601'
+PROJECT_ID = 'mydata-494606'
 DATASET_ID = 'ops_data'
 
 FILE_MAP = [
