@@ -21,8 +21,8 @@ from plotly.subplots import make_subplots
 import streamlit as st
 from google.cloud import bigquery
 
-PROJECT_ID = "dashboard-492601"
-DATASET_ID = "ops_data"
+PROJECT_ID = "mydata-494606"
+DATASET_ID = "mydata"
 BQ_PREFIX = f"{PROJECT_ID}.{DATASET_ID}"
 
 # ── 版本号 ────────────────────────────────────────────────
