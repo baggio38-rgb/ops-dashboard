@@ -25,7 +25,7 @@ import pandas as pd
 from google.cloud import bigquery
 
 PROJECT_ID = 'mydata-494606'
-DATASET_ID = 'ops_data'
+DATASET_ID = 'mydata'
 
 FILE_MAP = [
     (r'business-report', 'raw_platform_report', '平台报表'),
